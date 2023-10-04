@@ -8,6 +8,7 @@ using Duende.IdentityModel;
 using Duende.IdentityServer;
 using Duende.IdentityServer.Configuration;
 using Duende.IdentityServer.Models;
+using Duende.IdentityServer.Services;
 using Duende.IdentityServer.Stores;
 using Duende.IdentityServer.Validation;
 using UnitTests.Common;
@@ -317,5 +318,55 @@ public class TokenRequestValidation_RefreshToken_Invalid
 
         result.IsError.ShouldBeTrue();
         result.Error.ShouldBe("invalid_target");
+    }
+
+    [Fact]
+    [Trait("Category", Category)]
+    public async Task Error_from_RefreshTokenService_should_be_returned()
+    {
+        var client = await _clients.FindEnabledClientByIdAsync("roclient", _ct);
+
+        var validator = Factory.CreateTokenRequestValidator(
+            refreshTokenService: new ErrorRefreshTokenService(OidcConstants.TokenErrors.UnauthorizedClient));
+
+        var parameters = new NameValueCollection();
+        parameters.Add(OidcConstants.TokenRequest.GrantType, "refresh_token");
+        parameters.Add(OidcConstants.TokenRequest.RefreshToken, "handle");
+
+        var result = await validator.ValidateRequestAsync(parameters, client.ToValidationResult(), _ct);
+
+        result.IsError.ShouldBeTrue();
+        result.Error.ShouldBe(OidcConstants.TokenErrors.UnauthorizedClient);
+    }
+
+    [Fact]
+    [Trait("Category", Category)]
+    public async Task Missing_error_from_RefreshTokenService_should_default_to_invalid_grant()
+    {
+        var client = await _clients.FindEnabledClientByIdAsync("roclient", _ct);
+
+        var validator = Factory.CreateTokenRequestValidator(
+            refreshTokenService: new ErrorRefreshTokenService(null));
+
+        var parameters = new NameValueCollection();
+        parameters.Add(OidcConstants.TokenRequest.GrantType, "refresh_token");
+        parameters.Add(OidcConstants.TokenRequest.RefreshToken, "handle");
+
+        var result = await validator.ValidateRequestAsync(parameters, client.ToValidationResult(), _ct);
+
+        result.IsError.ShouldBeTrue();
+        result.Error.ShouldBe(OidcConstants.TokenErrors.InvalidGrant);
+    }
+
+    private class ErrorRefreshTokenService(string error) : IRefreshTokenService
+    {
+        public Task<TokenValidationResult> ValidateRefreshTokenAsync(string token, Client client, Ct ct) =>
+            Task.FromResult(new TokenValidationResult { IsError = true, Error = error });
+
+        public Task<string> CreateRefreshTokenAsync(RefreshTokenCreationRequest request, Ct ct) =>
+            throw new NotImplementedException();
+
+        public Task<string> UpdateRefreshTokenAsync(RefreshTokenUpdateRequest request, Ct ct) =>
+            throw new NotImplementedException();
     }
 }
