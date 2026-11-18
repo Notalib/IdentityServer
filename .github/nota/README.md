@@ -33,6 +33,10 @@ retire the patch.
   `git format-patch -1 --zero-commit -o .github/nota/patches`.
 - **Rebuild a version:** delete the `is-X.Y.Z-nota` tag, release and package
   versions, then run the workflow for that version.
+- **Publishing fails with 403:** packages that existed before this repository
+  published them must grant it access under Package settings → *Manage Actions
+  access* with the **Write** role (adding a repository defaults to Read).
+  Packages first created by this workflow get Admin access automatically.
 
 ## Patches
 
