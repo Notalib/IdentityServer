@@ -1,0 +1,160 @@
+# Builds Duende IdentityServer packages with Nota's in-house patches applied
+# (.github/nota/patches) and publishes them to GitHub Packages as X.Y.Z-nota.
+# See .github/nota/README.md.
+
+name: nota/identity-server-release
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Upstream version (X.Y.Z) to build. Empty = auto-detect new releases.'
+        type: string
+        required: false
+      dry-run:
+        description: 'Build and test, but do not push tags or packages'
+        type: boolean
+        default: false
+
+concurrency:
+  group: nota-release
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  UPSTREAM: https://github.com/DuendeSoftware/products.git
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      versions: ${{ steps.select.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select versions to build
+        id: select
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            echo "$VERSION" | grep -P '^\d+\.\d+\.\d+$' || { echo "::error::Invalid version '$VERSION'"; exit 1; }
+            versions="[\"$VERSION\"]"
+          else
+            git ls-remote --tags --refs "$UPSTREAM" 'is-*' | sed 's#.*refs/tags/##' > upstream.txt
+            git ls-remote --tags --refs origin 'is-*-nota*' | sed 's#.*refs/tags/##' > built.txt
+            versions=$(python3 .github/nota/discover.py upstream.txt built.txt)
+          fi
+          echo "Versions to build: $versions"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.versions != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.discover.outputs.versions) }}
+    env:
+      VERSION: ${{ matrix.version }}
+      TAG: is-${{ matrix.version }}-nota
+      DRY_RUN: ${{ inputs.dry-run || false }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout automation
+        uses: actions/checkout@v4
+        with:
+          path: nota
+
+      - name: Checkout upstream is-${{ matrix.version }}
+        uses: actions/checkout@v4
+        with:
+          repository: DuendeSoftware/products
+          ref: is-${{ matrix.version }}
+          path: src
+          # Full (blobless) history: MinVer warns on shallow clones.
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Apply patches
+        id: patch
+        working-directory: src
+        run: |
+          # Packages and tags belong to this repository, not upstream.
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git apply --check -R ../nota/.github/nota/patches/*.patch 2>/dev/null; then
+            echo "::warning::All Nota patches are already part of upstream is-$VERSION; no -nota build needed."
+            echo "upstreamed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git am --3way ../nota/.github/nota/patches/*.patch
+          git tag -a "$TAG" -m "Nota build of is-$VERSION"
+
+      - name: Setup .NET
+        if: steps.patch.outputs.upstreamed != 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: src/global.json
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Unit tests
+        if: steps.patch.outputs.upstreamed != 'true'
+        working-directory: src/identity-server/test/IdentityServer.UnitTests
+        run: dotnet test -c Release
+
+      - name: Pack
+        if: steps.patch.outputs.upstreamed != 'true'
+        working-directory: src/identity-server
+        run: |
+          for project in src/*/*.csproj; do
+            dotnet pack "$project" -c Release -o "$GITHUB_WORKSPACE/artifacts" -p:BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+          done
+          ls "$GITHUB_WORKSPACE/artifacts"
+          # MinVer must have picked up the -nota tag.
+          ls "$GITHUB_WORKSPACE"/artifacts/*."$VERSION"-nota.nupkg > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        if: steps.patch.outputs.upstreamed != 'true'
+        with:
+          name: packages-${{ matrix.version }}
+          path: artifacts/*.nupkg
+
+      - name: Publish packages and tag
+        if: steps.patch.outputs.upstreamed != 'true' && env.DRY_RUN != 'true'
+        run: |
+          # Packages first: the tag marks the version as done for future runs.
+          dotnet nuget push artifacts/*.nupkg \
+            --source "https://nuget.pkg.github.com/${GITHUB_REPOSITORY_OWNER}/index.json" \
+            --api-key "$GH_TOKEN" --skip-duplicate
+          git -C src push origin "refs/tags/$TAG"
+          gh release create "$TAG" artifacts/*.nupkg --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "IdentityServer $VERSION-nota" \
+            --notes "Upstream [is-$VERSION](https://github.com/DuendeSoftware/products/releases/tag/is-$VERSION) with patches from \`.github/nota/patches\`."
+
+      - name: Report failure
+        if: failure() && env.DRY_RUN != 'true'
+        run: |
+          title="Nota build failed for IdentityServer $VERSION"
+          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Failed again: $url"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+              --body "The scheduled -nota build of upstream \`is-$VERSION\` failed (patch conflict, test failure or publish error): $url"
+          fi
