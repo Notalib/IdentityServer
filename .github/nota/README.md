@@ -42,4 +42,4 @@ retire the patch.
 
 | Patch | Upstream status |
 | --- | --- |
-| `0001-use-refresh-token-service-error.patch` — return the error from `IRefreshTokenService.ValidateRefreshTokenAsync` instead of always `invalid_grant`. Needed by our session-limiting service, which reports its own error when a retired refresh token is used. | Proposed upstream via GitHub Discussions |
+| `0001-use-refresh-token-service-error.patch` — return the error from `IRefreshTokenService.ValidateRefreshTokenAsync` instead of always `invalid_grant`. Needed by our session-limiting service, which reports its own error when a retired refresh token is used. | Proposed upstream: [DuendeSoftware discussion #659](https://github.com/orgs/DuendeSoftware/discussions/659) |
