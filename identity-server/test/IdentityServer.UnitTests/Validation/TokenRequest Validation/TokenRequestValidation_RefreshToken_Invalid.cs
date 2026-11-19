@@ -358,10 +358,30 @@ public class TokenRequestValidation_RefreshToken_Invalid
         result.Error.ShouldBe(OidcConstants.TokenErrors.InvalidGrant);
     }
 
-    private class ErrorRefreshTokenService(string error) : IRefreshTokenService
+    [Fact]
+    [Trait("Category", Category)]
+    public async Task Error_description_from_RefreshTokenService_should_be_returned()
+    {
+        var client = await _clients.FindEnabledClientByIdAsync("roclient", _ct);
+
+        var validator = Factory.CreateTokenRequestValidator(
+            refreshTokenService: new ErrorRefreshTokenService(OidcConstants.TokenErrors.InvalidGrant, "session ended"));
+
+        var parameters = new NameValueCollection();
+        parameters.Add(OidcConstants.TokenRequest.GrantType, "refresh_token");
+        parameters.Add(OidcConstants.TokenRequest.RefreshToken, "handle");
+
+        var result = await validator.ValidateRequestAsync(parameters, client.ToValidationResult(), _ct);
+
+        result.IsError.ShouldBeTrue();
+        result.Error.ShouldBe(OidcConstants.TokenErrors.InvalidGrant);
+        result.ErrorDescription.ShouldBe("session ended");
+    }
+
+    private class ErrorRefreshTokenService(string error, string errorDescription = null) : IRefreshTokenService
     {
         public Task<TokenValidationResult> ValidateRefreshTokenAsync(string token, Client client, Ct ct) =>
-            Task.FromResult(new TokenValidationResult { IsError = true, Error = error });
+            Task.FromResult(new TokenValidationResult { IsError = true, Error = error, ErrorDescription = errorDescription });
 
         public Task<string> CreateRefreshTokenAsync(RefreshTokenCreationRequest request, Ct ct) =>
             throw new NotImplementedException();
