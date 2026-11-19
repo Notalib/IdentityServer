@@ -31,7 +31,9 @@ retire the patch.
   workflow, enter `X.Y.Z`. Tick *dry-run* to only build and test.
 - **Add or update a patch:** commit on top of an upstream tag and export it with
   `git format-patch -1 --zero-commit -o .github/nota/patches`.
-- **Rebuild a version:** delete the `is-X.Y.Z-nota` tag, release and package
+- **Rebuild a version after changing patches:** run the workflow with `version`
+  `X.Y.Z` and `revision` `N` to publish `X.Y.Z-nota.N` (bump `N` each time).
+- **Replace a broken build:** delete the `is-X.Y.Z-nota` tag, release and package
   versions, then run the workflow for that version.
 - **Publishing fails with 403:** packages that existed before this repository
   published them must grant it access under Package settings → *Manage Actions
@@ -42,4 +44,4 @@ retire the patch.
 
 | Patch | Upstream status |
 | --- | --- |
-| `0001-use-refresh-token-service-error.patch` — return the error from `IRefreshTokenService.ValidateRefreshTokenAsync` instead of always `invalid_grant`. Needed by our session-limiting service, which reports its own error when a retired refresh token is used. | Proposed upstream: [DuendeSoftware discussion #659](https://github.com/orgs/DuendeSoftware/discussions/659) |
+| `0001-use-refresh-token-service-error.patch` — return the error and error description from `IRefreshTokenService.ValidateRefreshTokenAsync` instead of always `invalid_grant` without a description. Needed by our session-limiting service, which reports its own error when a retired refresh token is used (migrating to `invalid_grant` + `error_description`, as suggested upstream). | Proposed upstream: [DuendeSoftware discussion #659](https://github.com/orgs/DuendeSoftware/discussions/659) |

@@ -1,23 +1,23 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Henrik=20Otte=20S=C3=B8rensen?= <hsn@nota.dk>
-Date: Wed, 4 Oct 2023 23:50:56 +0200
-Subject: [PATCH] feature: use returned error from RefreshTokenService in
- TokenRequestValidator
+Date: Thu, 19 Nov 2026 15:47:09 +0100
+Subject: [PATCH] feature: use returned error and description from
+ RefreshTokenService in TokenRequestValidator
 
 ---
  .../IdentityServer/Validation/Default/TokenRequestValidator.cs  | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/identity-server/src/IdentityServer/Validation/Default/TokenRequestValidator.cs b/identity-server/src/IdentityServer/Validation/Default/TokenRequestValidator.cs
-index 7a6027cf6..359fd0997 100644
+index 6fdf4b2b2..396cd22ee 100644
 --- a/identity-server/src/IdentityServer/Validation/Default/TokenRequestValidator.cs
 +++ b/identity-server/src/IdentityServer/Validation/Default/TokenRequestValidator.cs
-@@ -695,7 +695,7 @@ internal class TokenRequestValidator : ITokenRequestValidator
+@@ -763,7 +763,7 @@ internal class TokenRequestValidator : ITokenRequestValidator
          if (result.IsError)
          {
              LogWarning("Refresh token validation failed. aborting");
 -            return Invalid(OidcConstants.TokenErrors.InvalidGrant);
-+            return Invalid(result.Error ?? OidcConstants.TokenErrors.InvalidGrant);
++            return Invalid(result.Error ?? OidcConstants.TokenErrors.InvalidGrant, result.ErrorDescription);
          }
  
          _validatedRequest.RefreshToken = result.RefreshToken;

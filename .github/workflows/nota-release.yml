@@ -13,6 +13,10 @@ on:
         description: 'Upstream version (X.Y.Z) to build. Empty = auto-detect new releases.'
         type: string
         required: false
+      revision:
+        description: 'Rebuild number for an already-built version (1 = X.Y.Z-nota.1). Requires version.'
+        type: string
+        required: false
       dry-run:
         description: 'Build and test, but do not push tags or packages'
         type: boolean
@@ -41,7 +45,12 @@ jobs:
         id: select
         env:
           VERSION: ${{ inputs.version }}
+          REVISION: ${{ inputs.revision }}
         run: |
+          if [ -n "$REVISION" ]; then
+            echo "$REVISION" | grep -P '^[1-9]\d*$' || { echo "::error::Invalid revision '$REVISION'"; exit 1; }
+            [ -n "$VERSION" ] || { echo "::error::revision requires version"; exit 1; }
+          fi
           if [ -n "$VERSION" ]; then
             echo "$VERSION" | grep -P '^\d+\.\d+\.\d+$' || { echo "::error::Invalid version '$VERSION'"; exit 1; }
             versions="[\"$VERSION\"]"
@@ -67,7 +76,8 @@ jobs:
         version: ${{ fromJSON(needs.discover.outputs.versions) }}
     env:
       VERSION: ${{ matrix.version }}
-      TAG: is-${{ matrix.version }}-nota
+      NOTA_VERSION: ${{ matrix.version }}-nota${{ inputs.revision && format('.{0}', inputs.revision) || '' }}
+      TAG: is-${{ matrix.version }}-nota${{ inputs.revision && format('.{0}', inputs.revision) || '' }}
       DRY_RUN: ${{ inputs.dry-run || false }}
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -126,7 +136,7 @@ jobs:
           done
           ls "$GITHUB_WORKSPACE/artifacts"
           # MinVer must have picked up the -nota tag.
-          ls "$GITHUB_WORKSPACE"/artifacts/*."$VERSION"-nota.nupkg > /dev/null
+          ls "$GITHUB_WORKSPACE"/artifacts/*."$NOTA_VERSION".nupkg > /dev/null
 
       - uses: actions/upload-artifact@v4
         if: steps.patch.outputs.upstreamed != 'true'
@@ -150,7 +160,7 @@ jobs:
           fi
           git -C src push origin "refs/tags/$TAG"
           gh release create "$TAG" artifacts/*.nupkg --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "IdentityServer $VERSION-nota" \
+            --title "IdentityServer $NOTA_VERSION" \
             --notes "Upstream [is-$VERSION](https://github.com/DuendeSoftware/products/releases/tag/is-$VERSION) with patches from \`.github/nota/patches\`."
 
       - name: Report failure
