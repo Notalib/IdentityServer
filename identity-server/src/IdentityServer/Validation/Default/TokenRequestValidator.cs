@@ -701,7 +701,7 @@ internal class TokenRequestValidator : ITokenRequestValidator
         if (result.IsError)
         {
             LogWarning("Refresh token validation failed. aborting");
-            return Invalid(OidcConstants.TokenErrors.InvalidGrant);
+            return Invalid(result.Error ?? OidcConstants.TokenErrors.InvalidGrant, result.ErrorDescription);
         }
 
         _validatedRequest.RefreshToken = result.RefreshToken;
